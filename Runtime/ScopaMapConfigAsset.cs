@@ -192,11 +192,9 @@ namespace Scopa {
             // terrible hacky way to get default material at runtime https://answers.unity.com/questions/390513/how-do-i-apply-default-diffuse-material-to-a-meshr.html
             if (builtinDefaultMaterial == null) {
                 GameObject primitive = GameObject.CreatePrimitive(PrimitiveType.Plane);
-                primitive.active = false;
+                primitive.SetActive(false);
                 builtinDefaultMaterial = primitive.GetComponent<MeshRenderer>().sharedMaterial;
-            #if UNITY_EDITOR
-                DestroyImmediate(primitive);
-            #endif
+                Object.DestroyImmediate(primitive);
             }
             return builtinDefaultMaterial;
 

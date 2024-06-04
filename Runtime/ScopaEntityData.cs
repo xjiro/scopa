@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -86,6 +87,35 @@ namespace Scopa {
             }
             
             return int.TryParse(Properties[propertyKey], System.Globalization.NumberStyles.Integer, CultureInfo.InvariantCulture, out num);
+        }
+        
+        /// <summary> parses an entity property as an int; empty or whitespace will return false </summary>
+        public bool TryGetChoice(string propertyKey, System.Type enumType, out object num, bool verbose = false)
+        {
+            num = default;
+            
+            if (!Properties.ContainsKey(propertyKey)) {
+                if (verbose)
+                    LogNoKey(propertyKey);
+                return false;
+            }
+
+            if ( string.IsNullOrWhiteSpace(Properties[propertyKey]) ) {
+                if (verbose)
+                    LogEmpty(propertyKey);
+                return false;
+            }
+
+            if (!int.TryParse(Properties[propertyKey], System.Globalization.NumberStyles.Integer,
+                              CultureInfo.InvariantCulture, out var i))
+            {
+                if (verbose)
+                    LogEmpty(propertyKey);
+                return false;
+            }
+
+            num = Enum.ToObject(enumType, i);
+            return num != null;
         }
 
         /// <summary> parses an entity property as an int affected by scaling factor, by default 0.03125f (32 map units = 1 Unity meter); empty or whitespace will return false </summary>

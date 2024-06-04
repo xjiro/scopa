@@ -110,32 +110,23 @@ namespace Scopa {
         }
 
         static void CacheMaterialSearch() {
-#if UNITY_EDITOR
+            #if UNITY_EDITOR
             materials.Clear();
             var materialSearch = AssetDatabase.FindAssets("t:Material");
-            foreach (var materialSearchGUID in materialSearch)
-            {
-                // Load the asset path
-                string assetPath = AssetDatabase.GUIDToAssetPath(materialSearchGUID);
-
-                // Strip off "Assets/Materials/" from the asset path
-                string strippedPath = assetPath.Replace("Assets/Materials/", "").ToLower();
-                strippedPath = strippedPath.Replace(".mat", "");
-                Debug.Log("Material: " + strippedPath);
-
+            foreach ( var materialSearchGUID in materialSearch) {
                 // if there's multiple Materials attached to one Asset, we have to do additional filtering
-                var allAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
-                foreach (var asset in allAssets)
-                {
-                    if (asset != null && !materials.ContainsKey(strippedPath) && asset is Material)
-                    {
-                        materials.Add(strippedPath, asset as Material);
+                var allAssets = AssetDatabase.LoadAllAssetsAtPath( AssetDatabase.GUIDToAssetPath(materialSearchGUID) );
+                foreach ( var asset in allAssets ) {
+                    if ( asset != null && !materials.ContainsKey(asset.name) && asset is Material ) {
+                        // Debug.Log("loaded " + asset.name);
+                        materials.Add(asset.name, asset as Material);
                     }
                 }
+
             }
-#else
+            #else
             Debug.Log("CacheMaterialSearch() is not available at runtime.");
-#endif
+            #endif
         }
 
         /// <summary>Before generating game objects, we may want to modify some of the MapFile data. For example, when merging entities into worldspawn.</summary>
@@ -514,6 +505,18 @@ namespace Scopa {
                                 if ( entData.TryGetAngles3D(attribute.propertyKey, out var angle3D) )
                                     objectFields[i].SetValue(entComp, angle3D.eulerAngles);
                                 break;
+                            case BindFgd.VarType.Choices:
+                                if (entData.TryGetInt(attribute.propertyKey, out var choice))
+                                {
+                                    if (!Enum.IsDefined(objectFields[i].FieldType, choice))
+                                    {
+                                        Debug.LogError($"Value {choice} is not defined in enum type {objectFields[i].FieldType.Name}!", entComp as UnityEngine.Object);
+                                        break;
+                                    }
+                                    var o = Enum.ToObject(objectFields[i].FieldType, choice);
+                                    objectFields[i].SetValue(entComp, o);
+                                }
+                                break;
                             default:
                                 Debug.LogError( $"BindFgd named {objectFields[i].Name} / {attribute.propertyKey} has FGD var type {attribute.propertyType} ... but no case handler for it yet!");
                                 break;
@@ -521,8 +524,10 @@ namespace Scopa {
                     }
                 }
 
-                if ( config.callOnEntityImport )
+                if (config.callOnEntityImport)
+                {
                     entComp.OnEntityImport( entData );
+                }
             }
         }
 
@@ -538,9 +543,8 @@ namespace Scopa {
         static void SetGameObjectStatic(GameObject go, bool isNavigationStatic = true) {
             if ( isNavigationStatic ) {
                 go.isStatic = true;
-            } 
-        #if UNITY_EDITOR
-            else {
+            } else {
+                #if UNITY_EDITOR
                 GameObjectUtility.SetStaticEditorFlags(go, StaticEditorFlags.ContributeGI 
                     | StaticEditorFlags.OccluderStatic 
                     | StaticEditorFlags.BatchingStatic 
@@ -548,8 +552,8 @@ namespace Scopa {
                     | StaticEditorFlags.OffMeshLinkGeneration 
                     | StaticEditorFlags.ReflectionProbeStatic
                 );
+                #endif
             }
-        #endif
         }
 
         /// <summary> for each solid in an Entity, add either a Box Collider or a Mesh Collider component... or make one big merged Mesh Collider </summary>

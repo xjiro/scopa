@@ -361,7 +361,7 @@ namespace Scopa {
                         if ( !includeDiscardedFaces && IsFaceCulledDiscard(face) )
                             continue;
 
-                        if ( materialOverride != null && materialOverride.textureName.ToLowerInvariant().GetHashCode() != face.TextureName.ToLowerInvariant().GetHashCode() )
+                        if ( materialOverride != null && !face.TextureName.ToLowerInvariant().Contains(materialOverride.textureName.ToLowerInvariant()) )
                             continue;
 
                         faceList.Add(face);
@@ -469,8 +469,11 @@ namespace Scopa {
                 #if UNITY_EDITOR
                 if ( config.addLightmapUV2 ) {
                     UnwrapParam.SetDefaults( out var unwrap);
-                    unwrap.packMargin *= 2;
-                    Unwrapping.GenerateSecondaryUVSet( newMesh, unwrap );
+                    unwrap.packMargin *= 4;
+                    if (!Unwrapping.GenerateSecondaryUVSet(newMesh, unwrap))
+                    {
+                        
+                    }
                 }
 
                 if ( config.meshCompression != ScopaMapConfig.ModelImporterMeshCompression.Off)

@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
@@ -60,6 +61,7 @@ namespace Scopa {
         /// <summary> utility function to collect all defined entity types together, as well as all the entities defined in any FGD includes </summary>
         List<FgdClass> GetAllEntityTypesWithIncludes() {
             var allEntityTypes = new List<FgdClass>( entityTypes );
+            allEntityTypes.Add(worldspawn);
             foreach ( var include in includeFgds ) {
                 allEntityTypes.AddRange( include.config.entityTypes );
             }
@@ -68,7 +70,7 @@ namespace Scopa {
 
         /// <summary> returns null if no entityPrefab defined; note: entityClassname must already be ToLowerInvariant() and match exactly </summary>
         public GameObject GetEntityPrefabFor(string entityClassname) {
-            var search = GetAllEntityTypesWithIncludes().Where( cfg => entityClassname == cfg.className.ToLowerInvariant() ).FirstOrDefault();
+            var search = GetAllEntityTypesWithIncludes().Where( cfg => entityClassname.ToLowerInvariant() == cfg.className.ToLowerInvariant() ).FirstOrDefault();
             if ( search != null && search.entityPrefab != null) {
                 return search.entityPrefab;
             }
@@ -77,7 +79,7 @@ namespace Scopa {
 
         /// <summary> returns null if no meshPrefab found; note: entityClassname must already be ToLowerInvariant() and match exactly </summary>
         public GameObject GetMeshPrefabFor(string entityClassname) {
-            var search = GetAllEntityTypesWithIncludes().Where( cfg => entityClassname == cfg.className.ToLowerInvariant() ).FirstOrDefault();
+            var search = GetAllEntityTypesWithIncludes().Where( cfg => entityClassname.ToLowerInvariant() == cfg.className.ToLowerInvariant() ).FirstOrDefault();
             if ( search != null && search.meshPrefab != null) {
                 return search.meshPrefab;
             }
@@ -128,6 +130,9 @@ namespace Scopa {
             [Tooltip("(optional) custom prefab templates to use, just for this entity type")]
             public GameObject entityPrefab, meshPrefab;
 
+            [Tooltip("(optional) override for the display mesh!")]
+            public GameObject meshOverride;
+
             [Tooltip("if exporting an OBJ preview, should we scale the model? Set to <= 0 to disable OBJ generation for this entity.")]
             public float objScale = 0f;
 
@@ -160,8 +165,8 @@ namespace Scopa {
                     sb.Append($"color({editorColor.r} {editorColor.g} {editorColor.b}) ");
                 }
 
-                if ( classType == FgdClassType.PointClass && entityPrefab != null && objScale > 0 ) {
-                    sb.Append($"model(\"meshes/{className}.fbx\") ");
+                if ( classType == FgdClassType.PointClass && (entityPrefab != null || meshOverride != null) && objScale > 0 ) {
+                    sb.Append($"model(\"preview/{className}.obj\") ");
                 }
 
                 // gather additional properties with [BindFgd] attribute in the entityPrefab
@@ -205,6 +210,14 @@ namespace Scopa {
                                     case BindFgd.VarType.Angles3D:
                                         propType = FgdPropertyType.String;
                                         propDefaultValue = propDefaultValue.Substring(1, propDefaultValue.Length-2).Replace(",", "");
+                                        break;
+                                    case BindFgd.VarType.Choices:
+                                        propType = FgdPropertyType.Choices;
+                                        string[] names = System.Enum.GetNames(objectFields[i].FieldType);
+                                        foreach (var name in names)
+                                        {
+                                            propChoices.Add(new FgdEnum(name, (int)Enum.Parse(objectFields[i].FieldType, name)));
+                                        }
                                         break;
                                     default:
                                         Debug.LogError( $"BindFgd named {objectFields[i].Name} / {attribute.propertyKey} has FGD var type {attribute.propertyType} ... but no case handler for it yet!");
@@ -285,7 +298,7 @@ namespace Scopa {
                         text += $": \"{editorLabel}\" : \"{defaultValue}\" : \"{editorHelp}\" =\n    [\n        { string.Join("\n        ", choices.Select( (choice, index) => choice.ToString(index)) ) } \n    ]";
                         break;
                     case FgdPropertyType.Flags:
-                        text += $" =\n    [\n        { string.Join("\n        ", flags.Select( (flag, index) => flag.ToString(index)) ) } \n    ]";
+                        text += $"=\n    [\n        { string.Join("\n        ", flags.Select( (flag, index) => flag.ToString(index)) ) } \n    ]";
                         break;
                 }
 

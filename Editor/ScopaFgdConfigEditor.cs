@@ -29,6 +29,23 @@ namespace Scopa.Editor {
                 return;
             }
 
+            position.y += 20;
+
+            if (GUILayout.Button(
+                           new GUIContent("Update last export...", saveIcon, "Update the previous export.")))
+            {
+                var fgd = property.GetSerializedValue<ScopaFgdConfig>();
+                if (!ScopaCore.IsValidPath(fgd.lastSavePath))
+                {
+                    return;
+                }
+                var path = fgd.lastSavePath;
+                ScopaFgd.ExportFgdFile(fgd, path, fgd.exportModels);
+                property.serializedObject.ApplyModifiedProperties();
+                GUIUtility.ExitGUI();
+                return;
+            }
+
             // Using BeginProperty / EndProperty on the parent property means that
             // prefab override logic works on the entire property.
             EditorGUI.BeginProperty(position, label, property);

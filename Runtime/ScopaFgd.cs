@@ -44,7 +44,8 @@ namespace Scopa {
             /// <summary>applies axis correction BUT no MAP scaling correction</summary>
             Vector3Unscaled,
             /// <summary>bind to Vector3 as axis-corrected euler angles</summary>
-            Angles3D, 
+            Angles3D,
+            Choices
         }
     }
 
@@ -63,13 +64,16 @@ namespace Scopa {
         }
 
         public static void ExportObjModels(ScopaFgdConfig fgd, string filepath) {
-            var folder = Path.GetDirectoryName(filepath) + "/assets/";
+            var folder = Path.GetDirectoryName(filepath) + "/preview/";
 
             // TODO: create folder if it doesn't exist
 
             foreach( var entity in fgd.entityTypes ) {
-                if ( entity.objScale > 0)
-                    ObjExport.SaveObjFile( folder + entity.className + ".obj", new GameObject[] {entity.entityPrefab}, Vector3.one * entity.objScale);
+                if (entity.objScale > 0)
+                {
+                    GameObject export = entity.meshOverride != null ? entity.meshOverride : entity.entityPrefab;
+                    ObjExport.SaveObjFile( folder + entity.className + ".obj", new GameObject[] {export}, Vector3.one * entity.objScale, true, true, true);
+                }
             }
         }
 

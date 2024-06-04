@@ -4,6 +4,7 @@ using UnityEngine;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using UnityEngine.SceneManagement;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -54,7 +55,9 @@ namespace Scopa {
 		#endif
 
 		static bool DoesGOHaveMesh(GameObject go) {
-			return go.TryGetComponent<MeshFilter>(out var mf) || (go.TryGetComponent<SkinnedMeshRenderer>(out var smr) && smr.enabled);
+			return go.TryGetComponent<MeshFilter>(out var mf) || (go.TryGetComponent<SkinnedMeshRenderer>(out var smr) && smr.enabled)
+			       || (go.GetComponentInChildren<MeshFilter>() != null) || ((go.GetComponentInChildren<
+				                                                                 SkinnedMeshRenderer>() != null) && smr.enabled);
 		}
 		
         /// <summary> can handle MeshFilter or SkinnedMeshRenderers too </summary>
@@ -70,13 +73,31 @@ namespace Scopa {
                 smr.BakeMesh(newMesh, true);
                 m = newMesh;
             }
+            else
+            {
+	            var filter = go.GetComponentInChildren<MeshFilter>();
+	            if (!filter)
+	            {
+		            var skinned = go.GetComponentInChildren<SkinnedMeshRenderer>();
+		            if (skinned)
+		            {
+			            var newMesh = new Mesh();
+			            skinned.BakeMesh(newMesh, true);
+			            m = newMesh;
+		            }
+	            }
+	            else
+	            {
+		            m = filter.sharedMesh;
+	            }
+            }
 
 			if (!m)
 			{
 				return $"#### no Mesh Filter or Skinned Mesh Renderer found on {go.name} ####";
 			}
 
-			Material[] mats = go.GetComponent<Renderer>().sharedMaterials;
+			Material[] mats = go.GetComponentInChildren<Renderer>().sharedMaterials;
 			
 			StringBuilder sb = new StringBuilder();
 			
@@ -182,9 +203,10 @@ namespace Scopa {
 				t.localScale = oldScale;
 			}
 			
+			Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(fileName), "textures"));
 
             if ( materialLibrary.Count > 0 && writeTextures)
-                WriteTextures( Directory.GetParent(Path.GetDirectoryName(fileName)).ToString() + "/textures/", materialLibrary );
+                WriteTextures( Path.Combine(Path.GetDirectoryName(fileName), "textures/"), materialLibrary, 2 );
             // TODO: create textures folder if it doesn't exist already
 
 			// Unity's OBJ importer *requires* a .MTL file (with no spaces!) to import submeshes, otherwise it all gets merged together as one
@@ -240,7 +262,8 @@ namespace Scopa {
             foreach(var mat in materials) {
 				sb.AppendLine($"newmtl {GetMaterialFilename(mat)}");
 				sb.AppendLine("Ka 1.000 1.000 1.000");
-				sb.AppendLine("Kd 1.000 1.000 1.000\n\n");
+				sb.AppendLine("Kd 1.000 1.000 1.000");
+				sb.AppendLine("map_Kd " + "textures/" + GetMaterialFilename(mat) + ".jpg\n\n");
             }
 			File.WriteAllText( filePath, sb.ToString() );
         }
