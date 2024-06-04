@@ -110,23 +110,17 @@ namespace Scopa {
         }
 
         static void CacheMaterialSearch() {
-            #if UNITY_EDITOR
             materials.Clear();
-            var materialSearch = AssetDatabase.FindAssets("t:Material");
-            foreach ( var materialSearchGUID in materialSearch) {
-                // if there's multiple Materials attached to one Asset, we have to do additional filtering
-                var allAssets = AssetDatabase.LoadAllAssetsAtPath( AssetDatabase.GUIDToAssetPath(materialSearchGUID) );
-                foreach ( var asset in allAssets ) {
-                    if ( asset != null && !materials.ContainsKey(asset.name) && asset is Material ) {
-                        // Debug.Log("loaded " + asset.name);
-                        materials.Add(asset.name, asset as Material);
-                    }
-                }
+            var materialList = UnityExtensions.RecursiveMaterialSearch();
 
+            foreach (Material material in materialList)
+            {
+                if (material != null && !materials.ContainsKey(material.name))
+                {
+                    Debug.Log($"Found material {material.name}");
+                    materials.Add(material.name, material);
+                }
             }
-            #else
-            Debug.Log("CacheMaterialSearch() is not available at runtime.");
-            #endif
         }
 
         /// <summary>Before generating game objects, we may want to modify some of the MapFile data. For example, when merging entities into worldspawn.</summary>
@@ -202,10 +196,13 @@ namespace Scopa {
                     face.VAxis = direction == ScopaMesh.Axis.Y ? -System.Numerics.Vector3.UnitZ : -System.Numerics.Vector3.UnitY;
 
                     face.TextureName = face.TextureName.ToLowerInvariant();
+                    face.TextureName = face.TextureName
+                                        .Split(new string[] { @"/" }, StringSplitOptions.RemoveEmptyEntries)
+                                        .LastOrDefault();
 
                     // var center = face.Vertices.Aggregate(System.Numerics.Vector3.Zero, (x, y) => x + y) / face.Vertices.Count;
                     // Debug.DrawRay(center.ToUnity() * config.scalingFactor, face.Plane.Normal.ToUnity(), Color.yellow, 120f, false);
-                    
+
                     // skip tool textures and other objects?
                     if ( config.IsTextureNameCulled(face.TextureName) ) {
                         ScopaMesh.DiscardFace(face);
@@ -226,6 +223,7 @@ namespace Scopa {
 
                     // match this face's texture name to a material
                     if ( !materialLookup.ContainsKey(face.TextureName) ) {
+                        Debug.Log($"Found unique texture name {face.TextureName}");
                         var newMaterial = defaultMaterial;
                         var materialOverride = config.GetMaterialOverrideFor(face.TextureName);
 
@@ -243,6 +241,7 @@ namespace Scopa {
                         
                         // if still no better material found, then search the AssetDatabase for a matching texture name
                         if ( config.findMaterials && materialOverride == null && materials.Count > 0 && materials.ContainsKey(face.TextureName) ) {
+                            Debug.Log($"Grabbed cached material for {face.TextureName}");
                             newMaterial = materials[face.TextureName];
                         }
 

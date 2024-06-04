@@ -361,7 +361,7 @@ namespace Scopa {
                         if ( !includeDiscardedFaces && IsFaceCulledDiscard(face) )
                             continue;
 
-                        if ( materialOverride != null && !face.TextureName.ToLowerInvariant().Contains(materialOverride.textureName.ToLowerInvariant()) )
+                        if ( materialOverride != null && materialOverride.textureName.ToLowerInvariant().GetHashCode() != face.TextureName.ToLowerInvariant().GetHashCode() )
                             continue;
 
                         faceList.Add(face);
@@ -469,11 +469,8 @@ namespace Scopa {
                 #if UNITY_EDITOR
                 if ( config.addLightmapUV2 ) {
                     UnwrapParam.SetDefaults( out var unwrap);
-                    unwrap.packMargin *= 4;
-                    if (!Unwrapping.GenerateSecondaryUVSet(newMesh, unwrap))
-                    {
-                        
-                    }
+                    unwrap.packMargin *= 2;
+                    Unwrapping.GenerateSecondaryUVSet( newMesh, unwrap );
                 }
 
                 if ( config.meshCompression != ScopaMapConfig.ModelImporterMeshCompression.Off)
@@ -544,12 +541,13 @@ namespace Scopa {
                         outputUVs[n] = uvOverride[n];
                     } else {
 #if SCOPA_USE_BURST
+                        var rotationRad = -math.radians(faceRot[i]);
                         outputUVs[n] = new float2(
                             (math.dot(faceVertices[n], faceU[i].xyz / faceU[i].w) + (faceShift[i].x % textureWidth)) / textureWidth,
                             (math.dot(faceVertices[n], faceV[i].xyz / -faceV[i].w) + (-faceShift[i].y % textureHeight)) / textureHeight
                         );
 
-                        var rotationRad = math.radians(faceRot[i]);
+                        
 
                         var rotatedVector = new float2
                         {

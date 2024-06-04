@@ -14,151 +14,124 @@ using UnityEditor;
 using Debug = UnityEngine.Debug;
 #endif
 
-namespace Scopa
-{
-	/// <summary> main class for WAD import and export </summary>
-	public static class ScopaWad
-	{
-		// static buffers for all reading and writing operations, to try to reduce GC
-		static Color32[] palette = new Color32[256];
-		static List<ColorBucket> buckets = new List<ColorBucket>(128 * 128);
-		static List<ColorBucket> newBuckets = new List<ColorBucket>(256);
-		public static Texture2D resizedTexture { get; private set; }
+namespace Scopa {
+    /// <summary> main class for WAD import and export </summary>
+    public static class ScopaWad {
 
-#region WAD Reading
+        // static buffers for all reading and writing operations, to try to reduce GC
+        static Color32[] palette = new Color32[256];
+        static List<ColorBucket> buckets = new List<ColorBucket>(128*128);
+        static List<ColorBucket> newBuckets = new List<ColorBucket>(256);
+        public static Texture2D resizedTexture { get; private set; }
 
-		public static WadFile ParseWad(string fileName)
-		{
-			using (var fStream = System.IO.File.OpenRead(fileName))
-			{
-				var newWad = new WadFile(fStream);
-				newWad.Name = System.IO.Path.GetFileNameWithoutExtension(fileName);
-				return newWad;
-			}
-		}
+        #region WAD Reading
 
-		public static List<Texture2D> BuildWadTextures(WadFile wad, ScopaWadConfig config)
-		{
-			if (wad == null || wad.Entries == null || wad.Entries.Count == 0)
-			{
-				Debug.LogError("Couldn't parse WAD file " + wad.Name);
-			}
+        public static WadFile ParseWad(string fileName)
+        {
+            using (var fStream = System.IO.File.OpenRead(fileName))
+            {
+                var newWad = new WadFile(fStream);
+                newWad.Name = System.IO.Path.GetFileNameWithoutExtension(fileName);
+                return newWad;
+            }
+        }
 
-			var textureList = new List<Texture2D>();
+        public static List<Texture2D> BuildWadTextures(WadFile wad, ScopaWadConfig config) {
+            if ( wad == null || wad.Entries == null || wad.Entries.Count == 0) {
+                Debug.LogError("Couldn't parse WAD file " + wad.Name);
+            }
 
-			foreach (var entry in wad.Entries)
-			{
-				if (entry.Type != LumpType.RawTexture && entry.Type != LumpType.MipTexture)
-					continue;
+            var textureList = new List<Texture2D>();
 
-				var texData = (wad.GetLump(entry) as MipTexture);
-				// Debug.Log(entry.Name);
-				// Debug.Log( "BITMAP: " + string.Join(", ", texData.MipData[0].Select( b => b.ToString() )) );
-				// Debug.Log( "PALETTE: " + string.Join(", ", texData.Palette.Select( b => b.ToString() )) );
+            foreach ( var entry in wad.Entries ) {
+                if ( entry.Type != LumpType.RawTexture && entry.Type != LumpType.MipTexture )
+                    continue;
 
-				// Half-Life GoldSrc textures use individualized 256 color palettes; Quake textures will have a reference to the hard-coded Quake palette
-				var width = System.Convert.ToInt32(texData.Width);
-				var height = System.Convert.ToInt32(texData.Height);
+                var texData = (wad.GetLump(entry) as MipTexture);
+                // Debug.Log(entry.Name);
+                // Debug.Log( "BITMAP: " + string.Join(", ", texData.MipData[0].Select( b => b.ToString() )) );
+                // Debug.Log( "PALETTE: " + string.Join(", ", texData.Palette.Select( b => b.ToString() )) );
 
-				for (int i = 0; i < 256; i++)
-				{
-					palette[i] = new Color32(texData.Palette[i * 3], texData.Palette[i * 3 + 1],
-					                         texData.Palette[i * 3 + 2], 0xff);
-				}
+                // Half-Life GoldSrc textures use individualized 256 color palettes; Quake textures will have a reference to the hard-coded Quake palette
+                var width = System.Convert.ToInt32(texData.Width);
+                var height = System.Convert.ToInt32(texData.Height);
 
-				// the last color is reserved for transparency
-				var paletteHasTransparency = false;
-				if ((palette[255].r == QuakePalette.Data[255 * 3] && palette[255].g == QuakePalette.Data[255 * 3 + 1] &&
-				     palette[255].b == QuakePalette.Data[255 * 3 + 2])
-				    || (palette[255].r == 0x00 && palette[255].g == 0x00 && palette[255].b == 0xff))
-				{
-					paletteHasTransparency = true;
-					palette[255] = new Color32(0x00, 0x00, 0x00, 0x00);
-				}
+                for (int i=0; i<256; i++) {
+                    palette[i] = new Color32( texData.Palette[i*3], texData.Palette[i*3+1], texData.Palette[i*3+2], 0xff );
+                }
 
-				var mipSize = texData.MipData[0].Length;
-				var pixels = new Color32[mipSize];
-				var usesTransparency = false;
+                // the last color is reserved for transparency
+                var paletteHasTransparency = false;
+                if ( (palette[255].r == QuakePalette.Data[255*3] && palette[255].g == QuakePalette.Data[255*3+1] && palette[255].b == QuakePalette.Data[255*3+2])
+                    || (palette[255].r == 0x00 && palette[255].g == 0x00 && palette[255].b == 0xff) ) {
+                    paletteHasTransparency = true;
+                    palette[255] = new Color32(0x00, 0x00, 0x00, 0x00);
+                }
+                
+                var mipSize = texData.MipData[0].Length;
+                var pixels = new Color32[mipSize];
+                var usesTransparency = false;
 
-				// for some reason, WAD texture bytes are flipped? have to unflip them for Unity
-				for (int y = 0; y < height; y++)
-				{
-					for (int x = 0; x < width; x++)
-					{
-						int paletteIndex = texData.MipData[0][(height - 1 - y) * width + x];
-						pixels[y * width + x] = palette[paletteIndex];
-						if (!usesTransparency && paletteHasTransparency && paletteIndex == 255)
-						{
-							usesTransparency = true;
-						}
-					}
-				}
+                // for some reason, WAD texture bytes are flipped? have to unflip them for Unity
+                for( int y=0; y < height; y++) {
+                    for (int x=0; x < width; x++) {
+                        int paletteIndex = texData.MipData[0][(height-1-y)*width + x];
+                        pixels[y*width+x] = palette[paletteIndex];
+                        if ( !usesTransparency && paletteHasTransparency && paletteIndex == 255) {
+                            usesTransparency = true;
+                        }
+                    }
+                }
 
-				// we have all pixel color data now, so we can build the Texture2D
-				var newTexture = new Texture2D(width, height,
-				                               usesTransparency ? TextureFormat.RGBA32 : TextureFormat.RGB24, true,
-				                               config.linearColorspace);
-				newTexture.name = texData.Name.ToLowerInvariant();
-				newTexture.SetPixels32(pixels);
-#if UNITY_EDITOR
-				newTexture.alphaIsTransparency = usesTransparency;
-#endif
-				newTexture.filterMode = config.filterMode;
-				newTexture.anisoLevel = config.anisoLevel;
-				newTexture.Apply();
-				if (config.compressTextures)
-				{
-					newTexture.Compress(false);
-				}
+                // we have all pixel color data now, so we can build the Texture2D
+                var newTexture = new Texture2D( width, height, usesTransparency ? TextureFormat.RGBA32 : TextureFormat.RGB24, true, config.linearColorspace);
+                newTexture.name = texData.Name.ToLowerInvariant();
+                newTexture.SetPixels32(pixels);
+                newTexture.alphaIsTransparency = usesTransparency;
+                newTexture.filterMode = config.filterMode;
+                newTexture.anisoLevel = config.anisoLevel;
+                newTexture.Apply();
+                if ( config.compressTextures ) {
+                    newTexture.Compress(false);
+                }
+                textureList.Add( newTexture );
+                
+            }
 
-				textureList.Add(newTexture);
-			}
+            return textureList;
+        }
 
-			return textureList;
-		}
+        public static Material BuildMaterialForTexture( Texture2D texture, ScopaWadConfig config ) {
+            var material = texture.alphaIsTransparency ? GenerateMaterialAlpha(config) : GenerateMaterialOpaque(config);
+            material.name = texture.name;
+            material.mainTexture = texture;
 
-		public static Material BuildMaterialForTexture(Texture2D texture, ScopaWadConfig config)
-		{
-			#if UNITY_EDITOR
-			var material = texture.alphaIsTransparency ? GenerateMaterialAlpha(config) : GenerateMaterialOpaque(config);
-			#else
-			var material = GenerateMaterialOpaque(config);
-			#endif
-			material.name = texture.name;
-			material.mainTexture = texture;
+            return material;
+        }
 
-			return material;
-		}
+        public static Material GenerateMaterialOpaque( ScopaWadConfig config ) {
+            // TODO: URP, HDRP
+            Material material;
 
-		public static Material GenerateMaterialOpaque(ScopaWadConfig config)
-		{
+            if ( config.opaqueTemplate != null ) {
+                material = new Material(config.opaqueTemplate);
+            }
+            else {
+                material = new Material(Shader.Find("Standard"));
+                material.SetFloat("_Glossiness", 0.1f);
+            }
+
+            return material;
+        }
+
+        public static Material GenerateMaterialAlpha( ScopaWadConfig config ) {
 			// TODO: URP, HDRP
 			Material material;
 
-			if (config.opaqueTemplate != null)
-			{
-				material = new Material(config.opaqueTemplate);
-			}
-			else
-			{
-				material = new Material(Shader.Find("Standard"));
-				material.SetFloat("_Glossiness", 0.1f);
-			}
-
-			return material;
-		}
-
-		public static Material GenerateMaterialAlpha(ScopaWadConfig config)
-		{
-			// TODO: URP, HDRP
-			Material material;
-
-			if (config.alphaTemplate != null)
-			{
+			if ( config.alphaTemplate != null ) {
 				material = new Material(config.alphaTemplate);
 			}
-			else
-			{
+			else {
 				material = new Material(Shader.Find("Standard"));
 				material.SetFloat("_Glossiness", 0.1f);
 				material.SetFloat("_Mode", 1);
@@ -167,378 +140,339 @@ namespace Scopa
 				material.renderQueue = 2450;
 			}
 
-			return material;
-		}
+            return material;
+        }
 
-#endregion
+        #endregion
+        #region WAD Writing
 
-#region WAD Writing
+        const int MAX_WAD_NAME_LENGTH = 16;
+        const string ALPHABET = "abcdefghijklmnopqrstuvwxyz";
 
-		const int MAX_WAD_NAME_LENGTH = 16;
-		const string ALPHABET = "abcdefghijklmnopqrstuvwxyz";
+        public static string SanitizeWadTextureName(string input) {
+            var newInput = input.Replace(" ", "").ToLowerInvariant();
+            newInput = newInput.Substring(0, Mathf.Min(newInput.Length, MAX_WAD_NAME_LENGTH) );
+            if (newInput != input)
+                Debug.Log($"ScopaWad: texture was renamed from {input} >> {newInput}. WAD filenames have a limit of 16 characters + are all lowercase.");
+            return newInput;
+        }
 
-		public static string SanitizeWadTextureName(string input)
-		{
-			var newInput = input.Replace(" ", "").ToLowerInvariant();
-			newInput = newInput.Substring(0, Mathf.Min(newInput.Length, MAX_WAD_NAME_LENGTH));
-			if (newInput != input)
-				Debug.Log($"ScopaWad: texture was renamed from {input} >> {newInput}. WAD filenames have a limit of 16 characters + are all lowercase.");
-			return newInput;
-		}
+        public static void SaveWad3File(string filepath, ScopaWadCreator wadConfig) {
+            var wadData = GenerateWad3Data( Path.GetFileNameWithoutExtension(filepath), wadConfig);
+            if (wadData == null)
+                return;
 
-		public static void SaveWad3File(string filepath, ScopaWadCreator wadConfig)
-		{
-			var wadData = GenerateWad3Data(Path.GetFileNameWithoutExtension(filepath), wadConfig);
-			if (wadData == null)
-				return;
+            using (var fStream = System.IO.File.OpenWrite(filepath))
+            {
+                wadData.Write(fStream);
+            }
+            Debug.Log("Scopa saved WAD3 file to " + filepath);
+        }
 
-			using (var fStream = System.IO.File.OpenWrite(filepath))
-			{
-				wadData.Write(fStream);
-			}
+        static WadFile GenerateWad3Data(string wadName, ScopaWadCreator wadConfig) {
+            #if UNITY_EDITOR
+            var wadTimer = new Stopwatch();
+            wadTimer.Start();
+            #endif
 
-			Debug.Log("Scopa saved WAD3 file to " + filepath);
-		}
+            var duplicateNames = new List<string>();
+            var texNames = new List<string>();
+            var newWad = new WadFile(Formats.Texture.Wad.Version.Wad3);
+            newWad.Name = wadName;
 
-		static WadFile GenerateWad3Data(string wadName, ScopaWadCreator wadConfig)
-		{
-#if UNITY_EDITOR
-			var wadTimer = new Stopwatch();
-			wadTimer.Start();
-#endif
+            var whiteTexture = new Texture2D(32, 32);
+            Color[] pixels = Enumerable.Repeat(Color.white, 32*32).ToArray();
+            whiteTexture.SetPixels(pixels);
+            whiteTexture.Apply();
 
-			var duplicateNames = new List<string>();
-			var texNames = new List<string>();
-			var newWad = new WadFile(Formats.Texture.Wad.Version.Wad3);
-			newWad.Name = wadName;
+            List<Material> materials = new();
 
-			var whiteTexture = new Texture2D(32, 32);
-			Color[] pixels = Enumerable.Repeat(Color.white, 32 * 32).ToArray();
-			whiteTexture.SetPixels(pixels);
-			whiteTexture.Apply();
-
-			for (int i1 = 0; i1 < wadConfig.materials.Length; i1++)
-			{
-				Material mat = wadConfig.materials[i1];
-				if (mat == null)
-				{
-					Debug.LogWarning($"{wadName}: materials slot {i1} is empty.");
-					continue;
-				}
-
-				var hasDuplicateName = false;
-				var texName = SanitizeWadTextureName(mat.name);
-
-				var texture = mat.mainTexture;
-				if (texture == null)
-				{
-					texture = whiteTexture;
-					Debug.LogWarning($"{wadName}: {mat.name} doesn't have a mainTexture! Make sure the shader has a _MainTex or [MainTexture] property, and assign a Texture in the material!... Defaulting to a 32x32 white texture.");
-				}
-
-				// duplicate texture name handling
-				for (int c = 0; texNames.Contains(texName); c++)
-				{
-					hasDuplicateName = true;
-					texName = texName.Substring(0, texName.Length - 1);
-					if (c <= 9)
-					{
-						texName += c.ToString(); // increment by number
-					}
-					else if (c <= 9 + ALPHABET.Length)
-					{
-						texName += ALPHABET[c - 10]; // try incrementing by letter
-					}
-					else
-					{
-						texName = "";
-						for (int r = 0; r <= MAX_WAD_NAME_LENGTH; r++)
-						{
-							// give up and generate random string of letters
-							texName += ALPHABET[UnityEngine.Random.Range(0, ALPHABET.Length)];
-						}
-
-						break;
-					}
-				}
-				// Debug.Log("started working on " + texName);
-
-				var mipTex = new MipTextureLump();
-				mipTex.Name = texName;
-				mipTex.Width = System.Convert.ToUInt32(texture.width / (int)wadConfig.resolution);
-				mipTex.Height = System.Convert.ToUInt32(texture.height / (int)wadConfig.resolution);
-				mipTex.NumMips = 4; // all wad3 textures always have 3 mips
-				// Debug.Log($"{mipTex.Name} is {mipTex.Width} x {mipTex.Height}");
-
-				mipTex.MipData = QuantizeToMipmap(texture, mat.color, (int)wadConfig.resolution, out var palette);
-
-				mipTex.Palette = new byte[palette.Length * 3];
-				for (int i = 0; i < palette.Length; i++)
-				{
-					mipTex.Palette[i * 3] = palette[i].r;
-					mipTex.Palette[i * 3 + 1] = palette[i].g;
-					mipTex.Palette[i * 3 + 2] = palette[i].b;
-				}
-
-				newWad.AddLump(texName, mipTex);
-				texNames.Add(texName);
-				if (hasDuplicateName)
-					duplicateNames.Add(texName);
-			}
-
-			if (texNames.Count == 0)
-			{
-				Debug.LogError($"Scopa couldn't generate WAD file {wadName}: you must add at least one valid material to the config.");
-				return null;
-			}
-
-#if UNITY_EDITOR
-			wadTimer.Stop();
-			Debug.Log($"ScopaWad finished generating {wadName} in {wadTimer.ElapsedMilliseconds} ms"
-			          + (duplicateNames.Count > 0
-				             ? $"... however, some textures were renamed to avoid duplicates: {string.Join(", ", duplicateNames)}"
-				             : "")
-			         );
-#endif
-			return newWad;
-		}
-
-		public static byte[][] QuantizeToMipmap(Texture mainTexture, Color colorTint, int resizeFactor,
-			out Color32[] fixedPalette, bool generatePalette = true)
-		{
-			// we have to do this in two passes, with two render textures (to bypass texture read/write limits + for fast processing of pixels)
-
-			// pass 1: read the texture, and while we're at it, tint it too
-			ResizeCopyToBuffer(
-			                   (Texture2D)mainTexture,
-			                   colorTint,
-			                   Mathf.Max(Mathf.RoundToInt(mainTexture.width / resizeFactor), 4),
-			                   Mathf.Max(Mathf.RoundToInt(mainTexture.height / resizeFactor), 4)
-			                  );
-
-			if (generatePalette)
-			{
-				var colors = resizedTexture.GetPixels32();
-				buckets.Clear();
-				buckets.Add(new ColorBucket(colors));
-				int iterations = 0;
-				const int paletteColorCount = 255;
-				while (buckets.Count < paletteColorCount && iterations < paletteColorCount)
-				{
-					newBuckets.Clear();
-					for (var i = 0; i < buckets.Count; i++)
-					{
-						if (newBuckets.Count + (buckets.Count - i) < paletteColorCount && buckets[i].colorCount > 1)
-						{
-							buckets[i].Split(out var b1, out var b2);
-							newBuckets.Add(b1);
-							newBuckets.Add(b2);
-						}
-						else
-						{
-							newBuckets.AddRange(buckets.GetRange(i, buckets.Count - i));
-							break;
-						}
-					}
-
-					buckets.Clear();
-					buckets.AddRange(newBuckets);
-					iterations++;
-				}
-
-				// if there's empty space for more colors for some reason, pad it out
-				var emptyBucket = new ColorBucket(new Color32[] { new Color32(0x00, 0x00, 0xff, 0xff) });
-				while (buckets.Count < paletteColorCount + 1)
-				{
-					buckets.Add(emptyBucket);
-				}
-
-				fixedPalette = buckets.Select(bucket => bucket.Color).ToArray();
-			}
-			else
-			{
-				fixedPalette = new Color32[256];
-				for (int i = 0; i < 256; i++)
-				{
-					fixedPalette[i] = new Color32(QuakePalette.Data[i * 3], QuakePalette.Data[i * 3 + 1],
-					                              QuakePalette.Data[i * 3 + 2], 0xff);
-				}
-			}
-
-			// pass 2: now that we have a color palette, use render texture to palettize and generate mipmaps all at once
-			var width = resizedTexture.width;
-			var height = resizedTexture.height;
-			var mipmap = new byte[4][];
-
-			// debug
-			// ResizeCopyToBuffer((Texture2D)original, colorTint, width, height, fixedPalette, true);
-			// File.WriteAllBytes(  System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop) + "/" + material.name + ".png", resizedTexture.EncodeToPNG() );
-			// Debug.Log($"pixel 0 for {material.name} should be {resizedTexture.GetPixels32(0)[0]}");
-
-			ResizeCopyToBuffer((Texture2D)mainTexture, colorTint, width, height, fixedPalette);
-
-			for (int mip = 0; mip < 4; mip++)
-			{
-				int factor = Mathf.RoundToInt(Mathf.Pow(2, mip));
-				mipmap[mip] = new byte[(width / factor) * (height / factor)];
-
-				var indexEncodedAsPixels = resizedTexture.GetPixels(mip);
-				for (int y = 0; y < height / factor; y++)
-				{
-					for (int x = 0; x < width / factor; x++)
-					{
-						// textures are vertically flipped, so have to unflip them
-						// also, ResizeCopyToBuffer saves the palette index in the alpha channel
-						var index = Mathf.RoundToInt(indexEncodedAsPixels[y * width / factor + x].a * 255f);
-						// if ( x==0 && y==0 && mip==0) {
-						//     Debug.Log($"pixel 0 for {material.name} is {index} {Mathf.CeilToInt(index.a * 255f)} = {fixedPalette[Mathf.CeilToInt(index.a * 255f)]}");
-						// }
-						mipmap[mip][(height / factor - 1 - y) * width / factor + x] = System.Convert.ToByte(index);
-					}
-				}
-			}
-
-			return mipmap;
-		}
+            foreach (string searchPath in wadConfig.materialPaths)
+            {
+                materials.AddRange(UnityExtensions.RecursiveMaterialSearch(searchPath));
+            }
 
 
-		// code from https://github.com/ababilinski/unity-gpu-texture-resize
-		// and https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures-
-		public static void ResizeCopyToBuffer(Texture2D source, Color tint, int targetX, int targetY,
-			Color32[] palette = null)
-		{
-			RenderTexture tmp = RenderTexture.GetTemporary(
-			                                               targetX,
-			                                               targetY,
-			                                               0,
-			                                               RenderTextureFormat.Default,
-			                                               RenderTextureReadWrite.sRGB,
-			                                               1
-			                                              );
+            for (int i1 = 0; i1 < materials.Count; i1++) {
+                Material mat = materials[i1];
+                if (mat == null) {
+                    Debug.LogWarning($"{wadName}: materials slot {i1} is empty.");
+                    continue;
+                }
 
-			// Blit the pixels on texture to the RenderTexture
-			if (palette != null)
-			{
-				var mat = new Material(Shader.Find("Hidden/PalettizeBlit"));
-				mat.SetColor("_Color", tint);
-				mat.SetColorArray("_Colors",
-				                  palette.Select(c => new Color(c.r / 255f, c.g / 255f, c.b / 255f)).ToArray());
-				Graphics.Blit(source, tmp, mat);
-			}
-			else
-			{
-				var mat = new Material(Shader.Find("Hidden/BlitTint"));
-				mat.SetColor("_Color", tint);
-				Graphics.Blit(source, tmp, mat);
-				// Graphics.Blit(source, tmp);
-			}
+                var hasDuplicateName = false;
+                var texName = SanitizeWadTextureName(mat.name);
 
-			// Backup the currently set RenderTexture
-			RenderTexture previous = RenderTexture.active;
+                var texture = mat.mainTexture;
+                if (texture == null) {
+                    texture = whiteTexture;
+                    Debug.LogWarning($"{wadName}: {mat.name} doesn't have a mainTexture! Make sure the shader has a _MainTex or [MainTexture] property, and assign a Texture in the material!... Defaulting to a 32x32 white texture.");
+                }
 
-			// Set the current RenderTexture to the temporary one we created
-			RenderTexture.active = tmp;
+                // duplicate texture name handling
+                for( int c=0; texNames.Contains(texName); c++ ) {
+                    hasDuplicateName = true;
+                    texName = texName.Substring(0, texName.Length-1);
+                    if (c <= 9) {
+                        texName += c.ToString(); // increment by number
+                    } else if (c <= 9+ALPHABET.Length) { 
+                        texName += ALPHABET[c-10]; // try incrementing by letter
+                    } else {
+                        texName = "";
+                        for(int r=0; r<=MAX_WAD_NAME_LENGTH; r++) { // give up and generate random string of letters
+                            texName += ALPHABET[ UnityEngine.Random.Range(0, ALPHABET.Length) ];
+                        }
+                        break;
+                    }
+                }
+                // Debug.Log("started working on " + texName);
 
-			// Create a new readable Texture2D to copy the pixels to it
-			resizedTexture = new Texture2D(targetX, targetY, TextureFormat.RGBA32, palette != null ? 4 : 0, true);
-			resizedTexture.filterMode = FilterMode.Bilinear;
+                var mipTex = new MipTextureLump();
+                mipTex.Name = texName;
+                mipTex.Width = System.Convert.ToUInt32(texture.width / (int)wadConfig.resolution);
+                mipTex.Height = System.Convert.ToUInt32(texture.height / (int)wadConfig.resolution);
+                mipTex.NumMips = 4; // all wad3 textures always have 3 mips
+                // Debug.Log($"{mipTex.Name} is {mipTex.Width} x {mipTex.Height}");
 
-			// Copy the pixels from the RenderTexture to the new Texture
-			resizedTexture.ReadPixels(new Rect(0, 0, targetX, targetY), 0, 0, palette != null);
-			resizedTexture.Apply();
+                mipTex.MipData = QuantizeToMipmap( texture, mat.color, (int)wadConfig.resolution, out var palette );
 
-			// Reset the active RenderTexture
-			RenderTexture.active = previous;
+                mipTex.Palette = new byte[palette.Length * 3];
+                for( int i=0; i<palette.Length; i++) {
+                    mipTex.Palette[i*3] = palette[i].r;
+                    mipTex.Palette[i*3+1] = palette[i].g;
+                    mipTex.Palette[i*3+2] = palette[i].b;
+                }
 
-			// Release the temporary RenderTexture
-			RenderTexture.ReleaseTemporary(tmp);
-		}
+                newWad.AddLump( texName, mipTex );
+                texNames.Add(texName);
+                if (hasDuplicateName)
+                    duplicateNames.Add(texName);
+            }
 
-		// median cut color palette quanitization code
-		// adapted from https://github.com/bacowan/cSharpColourQuantization/blob/master/ColourQuantization/MedianCut.cs
-		// used under Unlicense License
-		public class ColorBucket
-		{
-			private readonly IDictionary<Color32, int> colors;
+            if (texNames.Count == 0) {
+                Debug.LogError($"Scopa couldn't generate WAD file {wadName}: you must add at least one valid material to the config.");
+                return null;
+            }
 
-			public int colorCount => colors.Count;
+            #if UNITY_EDITOR
+            wadTimer.Stop();
+            Debug.Log($"ScopaWad finished generating {wadName} in {wadTimer.ElapsedMilliseconds} ms" 
+                + (duplicateNames.Count > 0 ? $"... however, some textures were renamed to avoid duplicates: {string.Join(", ", duplicateNames)}" : "")
+            );
+            #endif
+            return newWad;
+        }
 
-			public Color32 Color { get; }
+        public static byte[][] QuantizeToMipmap(Texture mainTexture, Color colorTint, int resizeFactor, out Color32[] fixedPalette, bool generatePalette=true)
+        {
+            // we have to do this in two passes, with two render textures (to bypass texture read/write limits + for fast processing of pixels)
 
-			public ColorBucket(IEnumerable<Color32> colors)
-			{
-				this.colors = colors.ToLookup(c => c)
-					.ToDictionary(c => c.Key, c => c.Count());
-				this.Color = Average(this.colors);
-			}
+            // pass 1: read the texture, and while we're at it, tint it too
+            ResizeCopyToBuffer(
+                (Texture2D)mainTexture, 
+                colorTint, 
+                Mathf.Max(Mathf.RoundToInt(mainTexture.width / resizeFactor), 4), 
+                Mathf.Max(Mathf.RoundToInt(mainTexture.height / resizeFactor), 4)
+            ); 
 
-			public ColorBucket(IEnumerable<KeyValuePair<Color32, int>> enumerable)
-			{
-				this.colors = enumerable.ToDictionary(c => c.Key, c => c.Value);
-				this.Color = Average(this.colors);
-			}
+            if ( generatePalette ) {
+                var colors = resizedTexture.GetPixels32();
+                buckets.Clear();
+                buckets.Add( new ColorBucket(colors) );
+                int iterations = 0;
+                const int paletteColorCount = 255;
+                while (buckets.Count < paletteColorCount && iterations < paletteColorCount) {
+                    newBuckets.Clear();
+                    for (var i = 0; i < buckets.Count; i++) {
+                        if (newBuckets.Count + (buckets.Count - i) < paletteColorCount && buckets[i].colorCount > 1) {
+                            buckets[i].Split(out var b1, out var b2);
+                            newBuckets.Add(b1);
+                            newBuckets.Add(b2);
+                        }
+                        else {
+                            newBuckets.AddRange(buckets.GetRange(i, buckets.Count - i));
+                            break;
+                        }
+                    }
+                    buckets.Clear();
+                    buckets.AddRange( newBuckets );
+                    iterations++;
+                }
 
-			private static Color32 Average(IEnumerable<KeyValuePair<Color32, int>> colors)
-			{
-				var totals = colors.Sum(c => c.Value);
-				return new Color32(
-				                   r: System.Convert.ToByte(Mathf.RoundToInt(colors.Sum(c => System.Convert
-						                                                             .ToSingle(c.Key.r) *
-					                                                             c.Value) / Mathf.Max(1, totals))),
-				                   g: System.Convert.ToByte(Mathf.RoundToInt(colors.Sum(c => System.Convert
-						                                                             .ToSingle(c.Key.g) *
-					                                                             c.Value) / Mathf.Max(1, totals))),
-				                   b: System.Convert.ToByte(Mathf.RoundToInt(colors.Sum(c => System.Convert
-						                                                             .ToSingle(c.Key.b) *
-					                                                             c.Value) / Mathf.Max(1, totals))),
-				                   a: 0xff
-				                  );
-			}
+                // if there's empty space for more colors for some reason, pad it out
+                var emptyBucket = new ColorBucket( new Color32[] { new Color32(0x00, 0x00, 0xff, 0xff) } );
+                while ( buckets.Count < paletteColorCount+1 ) {
+                    buckets.Add( emptyBucket );
+                }
 
-			public bool HasColor(Color32 color)
-			{
-				return colors.ContainsKey(color);
-			}
+                fixedPalette = buckets.Select( bucket => bucket.Color ).ToArray();
+            } else {
+                fixedPalette = new Color32[256];
+                for (int i=0; i<256; i++) {
+                    fixedPalette[i] = new Color32( QuakePalette.Data[i*3], QuakePalette.Data[i*3+1], QuakePalette.Data[i*3+2], 0xff );
+                }
+            }
+            
+            // pass 2: now that we have a color palette, use render texture to palettize and generate mipmaps all at once
+            var width = resizedTexture.width;
+            var height = resizedTexture.height;
+            var mipmap = new byte[4][];
 
-			public void Split(out ColorBucket bucket1, out ColorBucket bucket2)
-			{
-				var redRange = colors.Keys.Max(c => c.r) - colors.Keys.Min(c => c.r);
-				var greenRange = colors.Keys.Max(c => c.g) - colors.Keys.Min(c => c.g);
-				var blueRange = colors.Keys.Max(c => c.b) - colors.Keys.Min(c => c.b);
+            // debug
+            // ResizeCopyToBuffer((Texture2D)original, colorTint, width, height, fixedPalette, true);
+            // File.WriteAllBytes(  System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop) + "/" + material.name + ".png", resizedTexture.EncodeToPNG() );
+            // Debug.Log($"pixel 0 for {material.name} should be {resizedTexture.GetPixels32(0)[0]}");
 
-				Func<Color32, int> sorter;
-				if (redRange > greenRange)
-				{
-					if (redRange > blueRange)
-					{
-						sorter = c => c.r;
-					}
-					else
-					{
-						sorter = c => c.b;
-					}
-				}
-				else
-				{
-					if (greenRange > blueRange)
-					{
-						sorter = c => c.g;
-					}
-					else
-					{
-						sorter = c => c.b;
-					}
-				}
+            ResizeCopyToBuffer((Texture2D)mainTexture, colorTint, width, height, fixedPalette);
 
-				var sorted = colors.OrderBy(c => sorter(c.Key));
+            for( int mip=0; mip<4; mip++) {
+                int factor = Mathf.RoundToInt( Mathf.Pow(2, mip) );
+                mipmap[mip] = new byte[ (width/factor) * (height/factor) ];
+                
+                var indexEncodedAsPixels = resizedTexture.GetPixels(mip);
+                for( int y=0; y<height/factor; y++) {
+                    for( int x=0; x<width/factor; x++) {
+                        // textures are vertically flipped, so have to unflip them
+                        // also, ResizeCopyToBuffer saves the palette index in the alpha channel
+                        var index = Mathf.RoundToInt(indexEncodedAsPixels[y*width/factor+x].a * 255f);
+                        // if ( x==0 && y==0 && mip==0) {
+                        //     Debug.Log($"pixel 0 for {material.name} is {index} {Mathf.CeilToInt(index.a * 255f)} = {fixedPalette[Mathf.CeilToInt(index.a * 255f)]}");
+                        // }
+                        mipmap[mip][(height/factor-1-y)*width/factor + x] = System.Convert.ToByte(index);
+                    }
+                }
+            }
+            return mipmap;
+        }
 
-				var firstBucketCount = sorted.Count() / 2;
 
-				bucket1 = new ColorBucket(sorted.Take(firstBucketCount));
-				bucket2 = new ColorBucket(sorted.Skip(firstBucketCount));
-			}
-		}
+        // code from https://github.com/ababilinski/unity-gpu-texture-resize
+        // and https://support.unity.com/hc/en-us/articles/206486626-How-can-I-get-pixels-from-unreadable-textures-
+        public static void ResizeCopyToBuffer(Texture2D source, Color tint, int targetX, int targetY, Color32[] palette = null) {
+            RenderTexture tmp = RenderTexture.GetTemporary( 
+                targetX,
+                targetY,
+                0,
+                RenderTextureFormat.Default,
+                RenderTextureReadWrite.sRGB, 
+                1
+            );
 
-#endregion
-	}
+            // Blit the pixels on texture to the RenderTexture
+            if ( palette != null ) {
+                var mat = new Material( Shader.Find("Hidden/PalettizeBlit") );
+                mat.SetColor("_Color", tint);
+                mat.SetColorArray( "_Colors", palette.Select( c => new Color(c.r / 255f, c.g / 255f, c.b / 255f) ).ToArray() );
+                Graphics.Blit(source, tmp, mat);
+            } else {
+                var mat = new Material( Shader.Find("Hidden/BlitTint") );
+                mat.SetColor("_Color", tint);
+                Graphics.Blit(source, tmp, mat);
+                // Graphics.Blit(source, tmp);
+            }
+
+            // Backup the currently set RenderTexture
+            RenderTexture previous = RenderTexture.active;
+
+            // Set the current RenderTexture to the temporary one we created
+            RenderTexture.active = tmp;
+
+            // Create a new readable Texture2D to copy the pixels to it
+            resizedTexture = new Texture2D(targetX, targetY, TextureFormat.RGBA32, palette != null ? 4 : 0, true );
+            resizedTexture.filterMode = FilterMode.Bilinear;
+
+            // Copy the pixels from the RenderTexture to the new Texture
+            resizedTexture.ReadPixels(new Rect(0, 0, targetX, targetY), 0, 0, palette != null);
+            resizedTexture.Apply();
+
+            // Reset the active RenderTexture
+            RenderTexture.active = previous;
+
+            // Release the temporary RenderTexture
+            RenderTexture.ReleaseTemporary(tmp);
+        }
+
+        // median cut color palette quanitization code
+        // adapted from https://github.com/bacowan/cSharpColourQuantization/blob/master/ColourQuantization/MedianCut.cs
+        // used under Unlicense License
+        public class ColorBucket
+        {
+            private readonly IDictionary<Color32, int> colors;
+
+            public int colorCount => colors.Count;
+
+            public Color32 Color { get; }
+
+            public ColorBucket(IEnumerable<Color32> colors)
+            {
+                this.colors = colors.ToLookup(c => c)
+                    .ToDictionary(c => c.Key, c => c.Count());
+                this.Color = Average(this.colors);
+            }
+
+            public ColorBucket(IEnumerable<KeyValuePair<Color32, int>> enumerable)
+            {
+                this.colors = enumerable.ToDictionary(c => c.Key, c => c.Value);
+                this.Color = Average(this.colors);
+            }
+
+            private static Color32 Average(IEnumerable<KeyValuePair<Color32, int>> colors)
+            {
+                var totals = colors.Sum(c => c.Value);
+                return new Color32(
+                    r: System.Convert.ToByte( Mathf.RoundToInt(colors.Sum(c => System.Convert.ToSingle(c.Key.r) * c.Value) / Mathf.Max(1, totals)) ),
+                    g: System.Convert.ToByte( Mathf.RoundToInt(colors.Sum(c => System.Convert.ToSingle(c.Key.g) * c.Value) / Mathf.Max(1, totals)) ),
+                    b: System.Convert.ToByte( Mathf.RoundToInt(colors.Sum(c => System.Convert.ToSingle(c.Key.b) * c.Value) / Mathf.Max(1, totals)) ),
+                    a: 0xff
+                );
+            }
+
+            public bool HasColor(Color32 color)
+            {
+                return colors.ContainsKey(color);
+            }
+
+            public void Split(out ColorBucket bucket1, out ColorBucket bucket2)
+            {
+                var redRange = colors.Keys.Max(c => c.r) - colors.Keys.Min(c => c.r);
+                var greenRange = colors.Keys.Max(c => c.g) - colors.Keys.Min(c => c.g);
+                var blueRange = colors.Keys.Max(c => c.b) - colors.Keys.Min(c => c.b);
+
+                Func<Color32, int> sorter;
+                if (redRange > greenRange)
+                {
+                    if (redRange > blueRange)
+                    {
+                        sorter = c => c.r;
+                    }
+                    else
+                    {
+                        sorter = c => c.b;
+                    }
+                }
+                else
+                {
+                    if (greenRange > blueRange)
+                    {
+                        sorter = c => c.g;
+                    }
+                    else
+                    {
+                        sorter = c => c.b;
+                    }
+                }
+
+                var sorted = colors.OrderBy(c => sorter(c.Key));
+
+                var firstBucketCount = sorted.Count() / 2;
+
+                bucket1 = new ColorBucket(sorted.Take(firstBucketCount));
+                bucket2 = new ColorBucket(sorted.Skip(firstBucketCount));
+            }
+        }
+
+        #endregion
+    }
+
+
 }
